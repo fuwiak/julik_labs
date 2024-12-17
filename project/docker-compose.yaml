@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  airflow-webserver:
+    build: .
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__FERNET_KEY: 'XBQ5GuvAO_aaGcJ7oLQ6S-TRqZ_GoBr0-ZtopW27sSs='
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+      airflow db upgrade &&
+      airflow users create --username admin --password admin --firstname Air --lastname Flow --role Admin --email admin@example.com &&
+      airflow webserver
+      "
+
+  airflow-scheduler:
+    build: .
+    restart: always
+    depends_on:
+      - postgres
+      - airflow-webserver
+    environment:
+      AIRFLOW__CORE__FERNET_KEY: 'Xw2tv33HpgMTAcMeG-Y6BaSRDO1w1VGWhzUsfV2aKiY='
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    command: >
+      bash -c "
+      airflow scheduler
+      "
