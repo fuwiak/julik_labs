@@ -1,3 +1,4 @@
+version: '3.9'
 services:
   postgres:
     image: postgres:13
@@ -24,6 +25,8 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
       AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      # Настройка API Airflow (при необходимости)
+      # AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
     ports:
       - "8080:8080"
     command: >
@@ -40,10 +43,83 @@ services:
       - postgres
       - airflow-webserver
     environment:
-      AIRFLOW__CORE__FERNET_KEY: 'Xw2tv33HpgMTAcMeG-Y6BaSRDO1w1VGWhzUsfV2aKiY='
+      AIRFLOW__CORE__FERNET_KEY: 'XBQ5GuvAO_aaGcJ7oLQ6S-TRqZ_GoBr0-ZtopW27sSs='
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
     command: >
       bash -c "
       airflow scheduler
       "
+
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+    restart: always
+    depends_on:
+      - postgres
+      - airflow-webserver
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    ports:
+      - "8000:8000"
+
+  node_exporter:
+    image: prom/node-exporter:latest
+    restart: always
+    expose:
+      - "9100"
+    ports:
+      - "9100:9100"
+
+  postgres_exporter:
+    image: bitnami/postgres-exporter:latest
+    restart: always
+    environment:
+      POSTGRESQL_EXPORTER_PASSWORD: airflow
+      POSTGRESQL_EXPORTER_USER: airflow
+      POSTGRESQL_EXPORTER_URI: postgresql://airflow:airflow@postgres:5432/airflow
+    expose:
+      - "9187"
+    ports:
+      - "9187:9187"
+    depends_on:
+      - postgres
+
+  blackbox_exporter:
+    image: prom/blackbox-exporter:latest
+    restart: always
+    expose:
+      - "9115"
+    ports:
+      - "9115:9115"
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    depends_on:
+      - node_exporter
+      - postgres_exporter
+      - blackbox_exporter
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    expose:
+      - "9090"
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    expose:
+      - "3000"
+    ports:
+      - "3000:3000"

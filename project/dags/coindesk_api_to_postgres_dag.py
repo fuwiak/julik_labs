@@ -63,5 +63,3 @@ with DAG(
         python_callable=fetch_and_insert,
         provide_context=True
     )
-
-    task_fetch_and_insert()
