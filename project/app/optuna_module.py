@@ -1,6 +1,6 @@
 import optuna
 from sqlalchemy.orm import Session
-from .models import OptunaRun, OptunaTrial
+from models import OptunaRun, OptunaTrial
 
 def run_optuna(db: Session, n_trials: int, low: float, high: float):
     def objective(trial):

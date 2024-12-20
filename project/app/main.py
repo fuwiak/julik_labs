@@ -1,14 +1,15 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 import os
-from .database import get_db
-from .crud import get_info, create_info, update_info, delete_info
-from .airflow_client import trigger_dag
-from .optuna_module import run_optuna
-from .text_analysis import analyze_text
-from .models import CallsLog
 from datetime import datetime
 import requests
+
+from database import get_db
+from crud import get_info, create_info, update_info, delete_info
+from airflow_client import trigger_dag
+from optuna_module import run_optuna
+from text_analysis import analyze_text
+from models import CallsLog
 
 app = FastAPI(title="Full System")
 
@@ -34,8 +35,8 @@ def create_info_endpoint(time_updated: str, disclaimer: str, chart_name: str, db
 
 @app.put("/info/{info_id}")
 def update_info_endpoint(info_id: int, time_updated: str = None, disclaimer: str = None, chart_name: str = None, db: Session = Depends(get_db)):
-    updated = update_info(db, info_id, time_updated=time_updated, disclaimer=disclaimer, chart_name=chart_name)
-    if not updated:
+    updated_obj = update_info(db, info_id, time_updated=time_updated, disclaimer=disclaimer, chart_name=chart_name)
+    if not updated_obj:
         log_call(db, f"/info/{info_id}", "not_found", "")
         raise HTTPException(status_code=404, detail="Not found")
     log_call(db, f"/info/{info_id}", "success", "updated")
@@ -74,8 +75,6 @@ def analyze_text_endpoint(text: str, db: Session = Depends(get_db)):
 
 @app.get("/reports/calls")
 def calls_report(db: Session = Depends(get_db)):
-    # Отчёт по вызовам — count by status, endpoint
-    from .models import CallsLog
     data = db.execute("""
         SELECT endpoint, status, COUNT(*) as cnt
         FROM calls_log

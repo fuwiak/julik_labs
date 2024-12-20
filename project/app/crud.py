@@ -1,4 +1,4 @@
-from .models import CoindeskInfo
+from models import CoindeskInfo
 from sqlalchemy.orm import Session
 
 def get_info(db: Session, info_id: int):
