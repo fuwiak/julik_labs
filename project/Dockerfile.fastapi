@@ -4,7 +4,7 @@ WORKDIR /app
 COPY app/ /app/
 
 # Установить все зависимости для FastAPI
-RUN pip install --no-cache-dir fastapi uvicorn psycopg2-binary sqlalchemy pydantic requests optuna
+RUN pip install --no-cache-dir fastapi uvicorn psycopg2-binary sqlalchemy pydantic requests optuna prometheus_fastapi_instrumentator
 
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

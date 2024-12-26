@@ -11,7 +11,13 @@ from optuna_module import run_optuna
 from text_analysis import analyze_text
 from models import CallsLog
 
+from prometheus_fastapi_instrumentator import Instrumentator
+
 app = FastAPI(title="Full System")
+
+# Инициализируем Instrumentator сразу — до события startup
+instrumentator = Instrumentator()
+instrumentator.instrument(app).expose(app, endpoint="/metrics")
 
 def log_call(db: Session, endpoint: str, status: str, result: str):
     call = CallsLog(endpoint=endpoint, status=status, result=result, timestamp=datetime.utcnow())
