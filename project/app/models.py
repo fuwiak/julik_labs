@@ -28,7 +28,8 @@ class CoindeskBPI(Base):
 
     info = relationship("CoindeskInfo", back_populates="bpi")
 
-# Таблицы для Optuna (лабораторная 5):
+
+# --- Лабораторная 5: Optuna таблицы ---
 class OptunaRun(Base):
     __tablename__ = 'optuna_run'
     id = Column(Integer, primary_key=True)
@@ -45,7 +46,8 @@ class OptunaTrial(Base):
     params = Column(Text)
     timestamp = Column(TIMESTAMP, default=datetime.utcnow)
 
-# Таблица для логирования вызовов функций (анализ текста, оптюна, CRUD)
+
+# --- Таблица для логирования вызовов функций (уже была) ---
 class CallsLog(Base):
     __tablename__ = 'calls_log'
     id = Column(Integer, primary_key=True)
@@ -53,3 +55,29 @@ class CallsLog(Base):
     status = Column(Text)
     result = Column(Text)
     timestamp = Column(TIMESTAMP, default=datetime.utcnow)
+
+
+# --- Новые таблицы для анализа текста и отчётов (лабораторная 5) ---
+class TextAnalysis(Base):
+    """
+    Хранит результат каждого анализа текста:
+    какой текст пришёл, какой результат анализа,
+    а также время сохранения.
+    """
+    __tablename__ = 'text_analysis'
+    id = Column(Integer, primary_key=True)
+    text = Column(Text, nullable=False)
+    result = Column(Text, nullable=False)
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)
+
+class TextAnalysisReport(Base):
+    """
+    Универсальная таблица для ведения отчётов по вызовам (например, успешные/ошибочные).
+    Можно расширять по потребностям.
+    """
+    __tablename__ = 'text_analysis_report'
+    id = Column(Integer, primary_key=True)
+    request_type = Column(Text, nullable=False)  # Например: "analyze_text", "optuna_run"
+    result = Column(Text, nullable=False)        # "Success", "Error", либо конкретная категория
+    error_type = Column(Text)                    # При ошибках
+    created_at = Column(TIMESTAMP, nullable=False, default=datetime.utcnow)

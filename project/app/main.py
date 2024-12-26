@@ -4,26 +4,46 @@ import os
 from datetime import datetime
 import requests
 
+# Подключаем ваши локальные модули
 from database import get_db
 from crud import get_info, create_info, update_info, delete_info
 from airflow_client import trigger_dag
 from optuna_module import run_optuna
 from text_analysis import analyze_text
-from models import CallsLog
+
+# Подключаем модели
+from models import CallsLog, TextAnalysis, TextAnalysisReport
 
 from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy.sql import text as sql_text
 
 app = FastAPI(title="Full System")
 
-# Инициализируем Instrumentator сразу — до события startup
+# Прометей-метрики
 instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app, endpoint="/metrics")
 
+
+# --- ФУНКЦИЯ: лог в calls_log (уже была) ---
 def log_call(db: Session, endpoint: str, status: str, result: str):
     call = CallsLog(endpoint=endpoint, status=status, result=result, timestamp=datetime.utcnow())
     db.add(call)
     db.commit()
 
+
+# --- ФУНКЦИЯ: лог в text_analysis_report (новое) ---
+def log_report(db: Session, request_type: str, result: str, error_type: str = None):
+    new_report = TextAnalysisReport(
+        request_type=request_type,
+        result=result,
+        error_type=error_type,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_report)
+    db.commit()
+
+
+# --- Существующие эндпоинты для coindesk_info ---
 @app.get("/info/{info_id}")
 def read_info_endpoint(info_id: int, db: Session = Depends(get_db)):
     info = get_info(db, info_id)
@@ -57,6 +77,8 @@ def delete_info_endpoint(info_id: int, db: Session = Depends(get_db)):
     log_call(db, f"/info/{info_id}", "success", "deleted")
     return {"status": "deleted"}
 
+
+# --- Вызов дага Airflow (как раньше) ---
 @app.post("/trigger_dag/{dag_id}")
 def trigger_dag_endpoint(dag_id: str, db: Session = Depends(get_db)):
     try:
@@ -67,23 +89,80 @@ def trigger_dag_endpoint(dag_id: str, db: Session = Depends(get_db)):
         log_call(db, f"/trigger_dag/{dag_id}", "error", str(e))
         raise
 
+
+# --- Оптимизация гиперпараметров (Optuna) ---
 @app.post("/optuna_run")
 def optuna_run_endpoint(n_trials: int, low: float, high: float, db: Session = Depends(get_db)):
-    run = run_optuna(db, n_trials, low, high)
-    log_call(db, "/optuna_run", "success", f"run_id_{run.id}")
-    return {"run_id": run.id, "best_value": str(run.best_value), "best_params": run.best_params}
+    try:
+        run_obj = run_optuna(db, n_trials, low, high)
+        # Лог в calls_log
+        log_call(db, "/optuna_run", "success", f"run_id_{run_obj.id}")
+        # Лог в text_analysis_report (хоть это и "optuna", но для отчётности)
+        log_report(db, "optuna_run", "Success")
+        return {
+            "run_id": run_obj.id,
+            "best_value": str(run_obj.best_value),
+            "best_params": run_obj.best_params
+        }
+    except Exception as e:
+        log_call(db, "/optuna_run", "error", str(e))
+        log_report(db, "optuna_run", "Error", error_type=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- Анализ текста (новое + сохранили старый вызов log_call) ---
 @app.post("/analyze_text")
 def analyze_text_endpoint(text: str, db: Session = Depends(get_db)):
-    result = analyze_text(text)
-    log_call(db, "/analyze_text", "success", result)
-    return {"result": result}
+    """
+    Анализ текста по ключевым словам,
+    результат пишем в text_analysis и в логи.
+    """
+    try:
+        # 1) Анализируем
+        result = analyze_text(text)
 
+        # 2) Сохраняем в таблицу text_analysis
+        new_rec = TextAnalysis(text=text, result=result)
+        db.add(new_rec)
+        db.commit()
+
+        # 3) Логируем в calls_log (как раньше)
+        log_call(db, "/analyze_text", "success", result)
+
+        # 4) Логируем в text_analysis_report (для базовых отчётов)
+        log_report(db, "analyze_text", result)
+
+        return {"result": result}
+    except Exception as e:
+        log_call(db, "/analyze_text", "error", str(e))
+        log_report(db, "analyze_text", "Error", error_type=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Пример отчётов по таблице calls_log (как было) ---
 @app.get("/reports/calls")
 def calls_report(db: Session = Depends(get_db)):
-    data = db.execute("""
+    data = db.execute(sql_text("""
         SELECT endpoint, status, COUNT(*) as cnt
         FROM calls_log
         GROUP BY endpoint, status
-    """).fetchall()
+    """)).fetchall()
     return [{"endpoint": r[0], "status": r[1], "count": r[2]} for r in data]
+
+
+# --- Дополнительный эндпоинт: отчёты text_analysis_report (при желании) ---
+@app.get("/reports/text-analysis")
+def text_analysis_report_endpoint(db: Session = Depends(get_db)):
+    """
+    Пример: группируем по (request_type, result).
+    Показываем, сколько было success/error, какие категории итд.
+    """
+    rows = db.execute("""
+        SELECT request_type, result, COUNT(*) as cnt
+        FROM text_analysis_report
+        GROUP BY request_type, result
+    """).fetchall()
+    return [
+        {"request_type": r[0], "result": r[1], "count": r[2]}
+        for r in rows
+    ]
