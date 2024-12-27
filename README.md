@@ -29,14 +29,15 @@ docker-compose up --build -d
 
 
 ```bash
-psql -h localhost -p 5433 -U airflow -d airflow
-#password: airflow
+docker-compose exec postgres bash
+psql -U airflow -d airflow
+SELECT * FROM coindesk_info LIMIT 10;
 ```
 
-Проверка на наличие данных в таблицы
+Проверка на наличие данныхSELECT * FROM coindesk_info LIMIT 10; в таблицы
 
 ```sql
-SELECT * FROM coindesk_info LIMIT 10;
+
 
 ```
 
